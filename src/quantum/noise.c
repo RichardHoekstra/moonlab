@@ -188,10 +188,14 @@ void noise_amplitude_damping(quantum_state_t* state, int qubit,
     complex_t* amp = state->amplitudes;
 
     double prob_one = 0.0;
+    double total_norm = 0.0;
     for (uint64_t i = 0; i < state_dim; i++) {
+        const double re = creal(amp[i]);
+        const double im = cimag(amp[i]);
+        const double probability = re * re + im * im;
+        total_norm += probability;
         if (i & qubit_mask) {
-            double magnitude = cabs(amp[i]);
-            prob_one += magnitude * magnitude;
+            prob_one += probability;
         }
     }
 
@@ -202,31 +206,23 @@ void noise_amplitude_damping(quantum_state_t* state, int qubit,
     // Selecting independently for each basis pair does not unravel the
     // channel and gives incorrect ensemble populations on multi-qubit states.
     if (random_value < p_jump && prob_one > 1e-15) {
-        const double sqrt_gamma = sqrt(gamma);
+        const double scale = 1.0 / sqrt(prob_one);
         for (uint64_t i = 0; i < state_dim; i++) {
             if (i & qubit_mask) {
                 uint64_t j = i ^ qubit_mask;
-                amp[j] = sqrt_gamma * amp[i];
+                amp[j] = scale * amp[i];
                 amp[i] = 0.0;
             }
         }
     } else {
+        const double branch_norm = total_norm - p_jump;
+        const double scale = branch_norm > 1e-15 ? 1.0 / sqrt(branch_norm) : 1.0;
         for (uint64_t i = 0; i < state_dim; i++) {
             if (i & qubit_mask) {
-                amp[i] *= sqrt_1_gamma;
+                amp[i] *= sqrt_1_gamma * scale;
+            } else {
+                amp[i] *= scale;
             }
-        }
-    }
-
-    // Renormalize
-    double norm = 0.0;
-    for (uint64_t i = 0; i < state_dim; i++) {
-        norm += cabs(amp[i]) * cabs(amp[i]);
-    }
-    if (norm > 1e-15) {
-        double inv_norm = 1.0 / sqrt(norm);
-        for (uint64_t i = 0; i < state_dim; i++) {
-            amp[i] *= inv_norm;
         }
     }
 
