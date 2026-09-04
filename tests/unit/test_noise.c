@@ -123,6 +123,31 @@ static void test_amplitude_damping_preserves_norm(void) {
     quantum_state_free(&s);
 }
 
+static void test_amplitude_damping_matches_kraus_ensemble(void) {
+    fprintf(stdout, "\n-- amplitude damping matches the Kraus ensemble --\n");
+    const int shots = 1200;
+    const double gamma = 0.5;
+    double average_p1 = 0.0;
+
+    for (int shot = 0; shot < shots; ++shot) {
+        quantum_state_t s;
+        quantum_state_init(&s, 2);
+        gate_hadamard(&s, 0);
+        gate_hadamard(&s, 1);  /* |++>, so P(q0=1) starts at 1/2. */
+
+        double random_value = ((double)shot + 0.5) / (double)shots;
+        noise_amplitude_damping(&s, 0, gamma, random_value);
+        average_p1 += measurement_probability_one(&s, 0);
+        quantum_state_free(&s);
+    }
+
+    average_p1 /= (double)shots;
+    /* Kraus evolution gives P'(1) = (1-gamma) P(1) = 1/4. */
+    CHECK(near(average_p1, 0.25, 1e-12),
+          "shot-averaged P(q0=1) = %.15g (Kraus expectation 0.25)",
+          average_p1);
+}
+
 static void test_pure_dephasing_populations(void) {
     fprintf(stdout, "\n-- pure dephasing preserves populations --\n");
     /* Pure dephasing destroys coherence but preserves |alpha|^2 and
@@ -241,6 +266,7 @@ int main(void) {
     test_phase_flip_populations();
     test_depolarizing_p0_is_noop();
     test_amplitude_damping_preserves_norm();
+    test_amplitude_damping_matches_kraus_ensemble();
     test_pure_dephasing_populations();
     test_norm_after_every_channel();
     test_depolarizing_fully_mixes_to_I2();
